@@ -840,7 +840,7 @@ require('lazy').setup({
       --  - va)  - [V]isually select [A]round [)]paren
       --  - yinq - [Y]ank [I]nside [N]ext [Q]uote
       --  - ci'  - [C]hange [I]nside [']quote
-      require('mini.ai').setup { n_lines = 500 }
+      -- require('mini.ai').setup { n_lines = 500 }
 
       -- Add/delete/replace surroundings (brackets, quotes, etc.)
       --
@@ -867,38 +867,88 @@ require('lazy').setup({
     end,
   },
 
-  { -- Highlight, edit, and navigate code
-    'nvim-treesitter/nvim-treesitter',
-    lazy = false,
-    build = ':TSUpdate',
-    branch = 'main',
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter-intro`
-    config = function()
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
-      require('nvim-treesitter').install(parsers)
-      vim.api.nvim_create_autocmd('FileType', {
-        callback = function(args)
-          local buf, filetype = args.buf, args.match
+  -- TREESITTER CORE (v1.0 API - main branch)
+{
+  'nvim-treesitter/nvim-treesitter',
+  build = ':TSUpdate',
+  branch = 'main',
+  lazy = false,
+  config = function()
+    local ts = require('nvim-treesitter')
+    ts.install({ 'rust', 'cpp', 'c', 'lua', 'vim', 'vimdoc', 'python' })
+    
+    vim.api.nvim_create_autocmd('FileType', {
+      pattern = { 'rust', 'cpp', 'c', 'lua', 'python' },
+      callback = function(args)
+        vim.treesitter.start(args.buf)
+        vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+      end,
+    })
+  end,
+},
 
-          local language = vim.treesitter.language.get_lang(filetype)
-          if not language then return end
-
-          -- check if parser exists and load it
-          if not vim.treesitter.language.add(language) then return end
-          -- enables syntax highlighting and other treesitter features
-          vim.treesitter.start(buf, language)
-
-          -- enables treesitter based folds
-          -- for more info on folds see `:help folds`
-          -- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
-          -- vim.wo.foldmethod = 'expr'
-
-          -- enables treesitter based indentation
-          vim.bo.indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
-        end,
-      })
-    end,
+-- TEXT OBJECTS (v1.0 - explicit keymaps, no configs module)
+{
+  'nvim-treesitter/nvim-treesitter-textobjects',
+  branch = 'main',
+  dependencies = { 
+    { 'nvim-treesitter/nvim-treesitter', branch = 'main' }
   },
+  lazy = false,
+  config = function()
+    -- Setup the module
+    require('nvim-treesitter-textobjects').setup({
+      select = {
+        enable = true,
+        lookahead = true,
+        -- Note: n_lines isn't exposed in v1.0 the same way, 
+        -- but queries work on large functions if parser is good
+      },
+      move = {
+        enable = true,
+        set_jumps = true,
+      },
+    })
+
+    -- MANUAL KEYMAPS (required in v1.0)
+    local select = require('nvim-treesitter-textobjects.select')
+    local move = require('nvim-treesitter-textobjects.move')
+    
+    -- Select textobjects
+    vim.keymap.set({ 'x', 'o' }, 'af', function()
+      select.select_textobject('@function.outer', 'textobjects')
+    end, { desc = 'Select around function' })
+    
+    vim.keymap.set({ 'x', 'o' }, 'if', function()
+      select.select_textobject('@function.inner', 'textobjects')
+    end, { desc = 'Select inner function' })
+    
+    vim.keymap.set({ 'x', 'o' }, 'ac', function()
+      select.select_textobject('@class.outer', 'textobjects')
+    end, { desc = 'Select around class' })
+    
+    vim.keymap.set({ 'x', 'o' }, 'ic', function()
+      select.select_textobject('@class.inner', 'textobjects')
+    end, { desc = 'Select inner class' })
+    
+    -- Move between functions
+    vim.keymap.set({ 'n', 'x', 'o' }, ']m', function()
+      move.goto_next_start('@function.outer', 'textobjects')
+    end, { desc = 'Next function start' })
+    
+    vim.keymap.set({ 'n', 'x', 'o' }, '[m', function()
+      move.goto_previous_start('@function.outer', 'textobjects')
+    end, { desc = 'Previous function start' })
+    
+    vim.keymap.set({ 'n', 'x', 'o' }, ']c', function()
+      move.goto_next_start('@class.outer', 'textobjects')
+    end, { desc = 'Next class start' })
+    
+    vim.keymap.set({ 'n', 'x', 'o' }, '[c', function()
+      move.goto_previous_start('@class.outer', 'textobjects')
+    end, { desc = 'Previous class start' })
+  end,
+},
 
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
