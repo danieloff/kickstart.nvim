@@ -69,6 +69,23 @@ local function find_ai_terminal_win()
   return best_win
 end
 
+local function find_shell_terminal_win()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if vim.b[buf].study_shell_terminal then
+      return win
+    end
+  end
+  return nil
+end
+
+--- Tag each StudyLayout pane so commands can resize by role (`study_window` win var).
+local function label_study_window(win, role)
+  if win and vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_win_set_var(win, 'study_window', role)
+  end
+end
+
 --- Collapse or restore left (Neo-tree) and right (AI terminal) to minimal width vs saved sizes.
 function M.toggle_side_panels()
   local min_w = vim.g.study_panel_min_width
@@ -183,9 +200,45 @@ function M.open(opts)
   vim.cmd('resize ' .. cmd_h)
 
   vim.cmd 'wincmd k'
+  -- From the left middle editor, `wincmd h` lands in Neo-tree. Neovide often focuses
+  -- that left editor after `wincmd k`, so we must not label the tree as editor_left.
   vim.cmd 'wincmd h'
+  if vim.bo.filetype == 'neo-tree' then
+    vim.cmd 'wincmd l'
+  end
+
+  label_study_window(find_neo_tree_win(), 'tree')
+  label_study_window(find_ai_terminal_win(), 'ai')
+  label_study_window(find_shell_terminal_win(), 'shell')
+  local ed_left = vim.api.nvim_get_current_win()
+  label_study_window(ed_left, 'editor_left')
+  vim.cmd 'wincmd l'
+  label_study_window(vim.api.nvim_get_current_win(), 'editor_right')
 
   notify('Study layout: Neo-tree | 2 editors + shell below | AI terminal')
+end
+
+--- 50/50 width for the two middle editor splits (uses `study_window` labels from :StudyLayout).
+function M.equalize_middle_editors()
+  local w_left, w_right
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local ok, role = pcall(vim.api.nvim_win_get_var, win, 'study_window')
+    if ok and role == 'editor_left' then
+      w_left = win
+    elseif ok and role == 'editor_right' then
+      w_right = win
+    end
+  end
+  if not w_left or not w_right or not vim.api.nvim_win_is_valid(w_left) or not vim.api.nvim_win_is_valid(w_right) then
+    vim.notify('Study layout: inner editors not labeled — run :StudyLayout first', vim.log.levels.WARN)
+    return
+  end
+  local w1w = vim.api.nvim_win_get_width(w_left)
+  local w2w = vim.api.nvim_win_get_width(w_right)
+  local total = w1w + w2w + 1
+  local half = math.floor(total / 2)
+  vim.api.nvim_set_current_win(w_left)
+  vim.api.nvim_win_set_width(w_left, half)
 end
 
 function M.setup()
@@ -197,9 +250,17 @@ function M.setup()
     M.toggle_side_panels()
   end, { desc = 'Shrink/restore Neo-tree + AI terminal widths (non-destructive)' })
 
+  vim.api.nvim_create_user_command('StudyEqualizeEditors', function()
+    M.equalize_middle_editors()
+  end, { desc = 'Equal width for the two middle editor splits' })
+
   vim.keymap.set('n', '<leader>sp', function()
     M.toggle_side_panels()
   end, { desc = '[S]ide [P]anels: shrink/restore tree + AI terminal' })
+
+  vim.keymap.set('n', '<leader>se', function()
+    M.equalize_middle_editors()
+  end, { desc = '[S]tudy [E]qualize: 50/50 width for the two editor splits' })
 
   vim.api.nvim_create_autocmd('VimEnter', {
     once = true,
