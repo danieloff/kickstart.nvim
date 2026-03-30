@@ -3,6 +3,8 @@
 --
 -- Optional: vim.g.study_cmd_term_height = number of lines for the bottom shell (default 12).
 -- Optional: vim.g.study_panel_min_width = column width when side panels are "hidden" (default 3).
+-- Optional: vim.g.study_expand_ratio = fraction of the middle pair for the focused editor (default 0.82).
+-- Optional: vim.g.study_expand_min_other = minimum columns for the other editor (default 12).
 -- :StudyTogglePanels — shrinks/restores Neo-tree (left) and the AI terminal (right) instead of closing them.
 
 local M = {}
@@ -218,8 +220,9 @@ function M.open(opts)
   notify('Study layout: Neo-tree | 2 editors + shell below | AI terminal')
 end
 
---- 50/50 width for the two middle editor splits (uses `study_window` labels from :StudyLayout).
-function M.equalize_middle_editors()
+---@return integer? w_left
+---@return integer? w_right
+local function find_middle_editors()
   local w_left, w_right
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     local ok, role = pcall(vim.api.nvim_win_get_var, win, 'study_window')
@@ -230,6 +233,15 @@ function M.equalize_middle_editors()
     end
   end
   if not w_left or not w_right or not vim.api.nvim_win_is_valid(w_left) or not vim.api.nvim_win_is_valid(w_right) then
+    return nil, nil
+  end
+  return w_left, w_right
+end
+
+--- 50/50 width for the two middle editor splits (uses `study_window` labels from :StudyLayout).
+function M.equalize_middle_editors()
+  local w_left, w_right = find_middle_editors()
+  if not w_left then
     vim.notify('Study layout: inner editors not labeled — run :StudyLayout first', vim.log.levels.WARN)
     return
   end
@@ -239,6 +251,48 @@ function M.equalize_middle_editors()
   local half = math.floor(total / 2)
   vim.api.nvim_set_current_win(w_left)
   vim.api.nvim_win_set_width(w_left, half)
+end
+
+--- Give the focused middle editor most of the width between the pair (complement to equalize).
+function M.expand_focused_middle_editor()
+  local w_left, w_right = find_middle_editors()
+  if not w_left then
+    vim.notify('Study layout: inner editors not labeled — run :StudyLayout first', vim.log.levels.WARN)
+    return
+  end
+  local cur = vim.api.nvim_get_current_win()
+  if cur ~= w_left and cur ~= w_right then
+    vim.notify('Study layout: focus one of the two middle editors first', vim.log.levels.WARN)
+    return
+  end
+  local w1w = vim.api.nvim_win_get_width(w_left)
+  local w2w = vim.api.nvim_win_get_width(w_right)
+  local total = w1w + w2w + 1
+  local available = total - 1
+  local min_other = vim.g.study_expand_min_other
+  if type(min_other) ~= 'number' or min_other < 1 then
+    min_other = 12
+  end
+  local ratio = vim.g.study_expand_ratio
+  if type(ratio) ~= 'number' or ratio <= 0 or ratio >= 1 then
+    ratio = 0.82
+  end
+  if available <= min_other then
+    vim.notify('Study layout: middle area too narrow to expand', vim.log.levels.WARN)
+    return
+  end
+  -- Prefer ~ratio of the pair for the focused editor, but never leave the other below min_other.
+  local focus_w = math.min(math.floor(available * ratio), available - min_other)
+  -- If ratio would starve the focused side, give it at least min_other columns when possible.
+  focus_w = math.max(min_other, focus_w)
+  focus_w = math.min(focus_w, available - min_other)
+  if cur == w_left then
+    vim.api.nvim_set_current_win(w_left)
+    vim.api.nvim_win_set_width(w_left, focus_w)
+  else
+    vim.api.nvim_set_current_win(w_right)
+    vim.api.nvim_win_set_width(w_right, focus_w)
+  end
 end
 
 function M.setup()
@@ -254,6 +308,10 @@ function M.setup()
     M.equalize_middle_editors()
   end, { desc = 'Equal width for the two middle editor splits' })
 
+  vim.api.nvim_create_user_command('StudyExpandFocusedEditor', function()
+    M.expand_focused_middle_editor()
+  end, { desc = 'Widen focused middle editor (StudyLayout pair)' })
+
   vim.keymap.set('n', '<leader>sp', function()
     M.toggle_side_panels()
   end, { desc = '[S]ide [P]anels: shrink/restore tree + AI terminal' })
@@ -261,6 +319,10 @@ function M.setup()
   vim.keymap.set('n', '<leader>se', function()
     M.equalize_middle_editors()
   end, { desc = '[S]tudy [E]qualize: 50/50 width for the two editor splits' })
+
+  vim.keymap.set('n', '<leader>sm', function()
+    M.expand_focused_middle_editor()
+  end, { desc = '[S]tudy [M]aximize: widen focused middle editor vs the other split' })
 
   vim.api.nvim_create_autocmd('VimEnter', {
     once = true,
