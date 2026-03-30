@@ -10,6 +10,15 @@ return {
     'nvim-lua/plenary.nvim',
     'nvim-tree/nvim-web-devicons', -- not strictly required, but recommended
     'MunifTanjim/nui.nvim',
+    -- Required for Neo-tree `w` / *with_window_picker commands (:h neo-tree-mappings)
+    {
+      's1n7ax/nvim-window-picker',
+      name = 'window-picker',
+      version = '2.*',
+      config = function()
+        require('window-picker').setup()
+      end,
+    },
   },
   lazy = false,
   keys = {

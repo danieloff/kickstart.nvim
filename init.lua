@@ -318,6 +318,7 @@ require('lazy').setup({
       spec = {
         { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
         { '<leader>t', group = '[T]oggle' },
+        { '<leader>d', group = '[D]ebug / DAP' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } }, -- Enable gitsigns recommended keymaps first
         { 'gr', group = 'LSP Actions', mode = { 'n' } },
       },
@@ -384,6 +385,7 @@ require('lazy').setup({
 
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
+      local actions = require 'telescope.actions'
       require('telescope').setup {
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
@@ -393,7 +395,15 @@ require('lazy').setup({
         --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
         --   },
         -- },
-        -- pickers = {}
+        pickers = {
+          buffers = {
+            mappings = {
+              -- Default is <M-d>; on macOS Option+letter often types into the filter instead of Meta.
+              i = { ['<c-d>'] = actions.delete_buffer },
+              n = { ['<c-d>'] = actions.delete_buffer },
+            },
+          },
+        },
         extensions = {
           ['ui-select'] = { require('telescope.themes').get_dropdown() },
         },
@@ -598,12 +608,13 @@ require('lazy').setup({
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
       --  See `:help lsp-config` for information about keys and how to configure
+      --
+      -- Rust: use rustaceanvim + rust-analyzer on PATH (rustup). Do not enable rust_analyzer here.
       ---@type table<string, vim.lsp.Config>
       local servers = {
         -- clangd = {},
         -- gopls = {},
         -- pyright = {},
-        -- rust_analyzer = {},
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
         --    https://github.com/pmizio/typescript-tools.nvim
@@ -849,8 +860,20 @@ require('lazy').setup({
       -- - sr)'  - [S]urround [R]eplace [)] [']
       require('mini.surround').setup()
 
-      -- Buffer tabs (VS Code-style tab bar for open buffers)
-      require('mini.tabline').setup()
+      -- Close buffers without collapsing splits (unlike plain :bd).
+      require('mini.bufremove').setup()
+      vim.keymap.set('n', '<leader>bd', function()
+        require('mini.bufremove').delete(0, false)
+      end, { desc = '[B]uffer [D]elete (keep layout)' })
+
+      -- Buffer tabs (VS Code-style tab bar for open buffers).
+      -- Prepend bufnr so you can match tabs to :buffers / :bd N / MiniBufremove.delete(N).
+      local MiniTabline = require 'mini.tabline'
+      MiniTabline.setup {
+        format = function(buf_id, label)
+          return MiniTabline.default_format(buf_id, ('%d %s'):format(buf_id, label))
+        end,
+      }
 
       -- Simple and easy statusline.
       --  You could remove this setup call if you don't like it,
@@ -973,7 +996,7 @@ require('lazy').setup({
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!

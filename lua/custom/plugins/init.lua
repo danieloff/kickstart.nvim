@@ -5,4 +5,6 @@
 
 ---@module 'lazy'
 ---@type LazySpec
-return {}
+return {
+  { import = 'custom.plugins.rust' },
+}
