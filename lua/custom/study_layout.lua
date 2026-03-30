@@ -295,6 +295,19 @@ function M.expand_focused_middle_editor()
   end
 end
 
+--- Jump to the full-height AI terminal (right pane after :StudyLayout). Pairs with \\ → Neo-tree reveal.
+function M.focus_ai_terminal()
+  local win = find_ai_terminal_win()
+  if win and vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_set_current_win(win)
+    if vim.bo[vim.api.nvim_win_get_buf(win)].buftype == 'terminal' then
+      vim.cmd('startinsert')
+    end
+  else
+    vim.notify('No AI terminal window — run :StudyLayout', vim.log.levels.INFO)
+  end
+end
+
 function M.setup()
   vim.api.nvim_create_user_command('StudyLayout', function()
     M.open {}
@@ -311,6 +324,12 @@ function M.setup()
   vim.api.nvim_create_user_command('StudyExpandFocusedEditor', function()
     M.expand_focused_middle_editor()
   end, { desc = 'Widen focused middle editor (StudyLayout pair)' })
+
+  vim.api.nvim_create_user_command('StudyFocusAI', function()
+    M.focus_ai_terminal()
+  end, { desc = 'Focus the StudyLayout AI terminal' })
+
+  vim.keymap.set('n', '|', M.focus_ai_terminal, { desc = 'Focus AI terminal (StudyLayout)' })
 
   vim.keymap.set('n', '<leader>sp', function()
     M.toggle_side_panels()
